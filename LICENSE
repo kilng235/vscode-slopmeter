@@ -1,6 +1,8 @@
 MIT License
 
-Copyright (c) 2026 juno
+Copyright (c) 2026 kilng235
+
+Based on [slopmeter-python](https://github.com/KMnO4-zx/slopmeter-python) by KMnO4-zx (MIT License).
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
