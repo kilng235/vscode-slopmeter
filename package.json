@@ -1,0 +1,115 @@
+{
+  "name": "vscode-slopmeter",
+  "displayName": "SlopMeter - AI Usage Heatmap",
+  "description": "Track your AI coding tool usage with beautiful heatmaps in VSCode sidebar",
+  "version": "0.1.0",
+  "publisher": "kilng235",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kilng235/vscode-slopmeter.git"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onView:slopMeter.heatmap",
+    "onCommand:slopMeter.refresh",
+    "onCommand:slopMeter.export"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "slopMeter",
+          "title": "SlopMeter",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "views": {
+      "slopMeter": [
+        {
+          "type": "webview",
+          "id": "slopMeter.heatmap",
+          "name": "Usage Heatmap"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "slopMeter.refresh",
+        "title": "SlopMeter: Refresh Heatmap",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "slopMeter.export",
+        "title": "SlopMeter: Export Heatmap",
+        "icon": "$(export)"
+      }
+    ],
+    "configuration": {
+      "title": "SlopMeter",
+      "properties": {
+        "slopMeter.providers": {
+          "type": "array",
+          "default": [
+            "opencode",
+            "claude",
+            "hermes"
+          ],
+          "description": "Providers to display in the heatmap"
+        },
+        "slopMeter.colorMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "default": "auto",
+          "description": "Color theme"
+        },
+        "slopMeter.openCodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom OpenCode data directory path (auto-detected if empty)"
+        },
+        "slopMeter.claudePath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Claude Code data directory path (auto-detected if empty)"
+        },
+        "slopMeter.hermesPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Hermes Agent data directory path (auto-detected if empty)"
+        },
+        "slopMeter.refreshInterval": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Auto-refresh interval in seconds (0 = disabled)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.1"
+  }
+}

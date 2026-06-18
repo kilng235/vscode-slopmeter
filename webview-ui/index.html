@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <title>SlopMeter</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-color, #fff);
+      color: var(--text-color, #333);
+      padding: 12px;
+      overflow-x: hidden;
+    }
+
+    :root {
+      --bg-color: #ffffff;
+      --text-color: #0f172a;
+      --muted-color: #737373;
+      --border-color: #e1e4e8;
+      --empty-cell: #f5f5f5;
+      --hover-outline: #333;
+      --section-bg: #fafafa;
+    }
+
+    body.dark {
+      --bg-color: #171717;
+      --text-color: #fafafa;
+      --muted-color: #a3a3a3;
+      --border-color: #333;
+      --empty-cell: #262626;
+      --hover-outline: #fff;
+      --section-bg: #1e1e1e;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .controls {
+      display: flex;
+      gap: 4px;
+    }
+    .controls button {
+      background: none;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      color: var(--text-color);
+      font-size: 12px;
+    }
+    .controls button:hover {
+      opacity: 0.8;
+    }
+    .controls button.active {
+      background: var(--text-color);
+      color: var(--bg-color);
+    }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .month-nav button {
+      background: none;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      color: var(--text-color);
+      font-size: 14px;
+      line-height: 1;
+    }
+    .month-nav button:hover {
+      background: var(--border-color);
+    }
+    .month-nav button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    .month-nav .month-label {
+      font-size: 14px;
+      font-weight: 600;
+      min-width: 100px;
+      text-align: center;
+    }
+
+    .loading, .error {
+      padding: 24px;
+      text-align: center;
+      color: var(--muted-color);
+      font-size: 13px;
+    }
+    .error {
+      color: #cb2431;
+    }
+
+    .section {
+      margin-bottom: 20px;
+      padding: 12px;
+      background: var(--section-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .section-total {
+      font-size: 12px;
+      color: var(--muted-color);
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+      margin-bottom: 10px;
+    }
+    .weekday-label {
+      font-size: 9px;
+      color: var(--muted-color);
+      text-align: center;
+      padding: 2px 0;
+    }
+    .calendar-cell {
+      aspect-ratio: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: outline 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: var(--muted-color);
+      min-height: 28px;
+    }
+    .calendar-cell:hover {
+      outline: 2px solid var(--hover-outline);
+      outline-offset: 1px;
+    }
+    .calendar-cell.empty {
+      background: transparent;
+      cursor: default;
+    }
+    .calendar-cell.empty:hover {
+      outline: none;
+    }
+
+    .section-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .section-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 4px 8px;
+      background: var(--bg-color);
+      border-radius: 4px;
+      min-width: 60px;
+    }
+    .section-stat-value {
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .section-stat-label {
+      color: var(--muted-color);
+      font-size: 10px;
+    }
+
+    .tooltip {
+      position: fixed;
+      background: #24292e;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: none;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .tooltip.visible { opacity: 1; }
+    .tooltip-date { font-weight: 600; }
+    .tooltip-tokens { color: #adbac7; }
+
+    .no-data {
+      padding: 16px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted-color);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <h1>SlopMeter</h1>
+      <div class="controls">
+        <button id="btn-refresh" title="Refresh">↻</button>
+      </div>
+    </div>
+    <div class="month-nav">
+      <button id="btn-prev">◀</button>
+      <span class="month-label" id="month-label">加载中...</span>
+      <button id="btn-next">▶</button>
+    </div>
+    <div id="content">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip">
+    <div class="tooltip-date" id="tooltip-date"></div>
+    <div class="tooltip-tokens" id="tooltip-tokens"></div>
+  </div>
+
+  <script>
+    (function() {
+      const tooltip = document.getElementById('tooltip')
+      const tooltipDate = document.getElementById('tooltip-date')
+      const tooltipTokens = document.getElementById('tooltip-tokens')
+      const btnRefresh = document.getElementById('btn-refresh')
+      const btnPrev = document.getElementById('btn-prev')
+      const btnNext = document.getElementById('btn-next')
+      const monthLabel = document.getElementById('month-label')
+      const content = document.getElementById('content')
+
+      let currentYear = 0
+      let currentMonth = 0
+      let isCurrentMonth = false
+
+      const vscode = acquireVsCodeApi()
+
+      function formatTokenTotal(value) {
+        const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]
+        for (const [size, suffix] of units) {
+          if (value >= size) {
+            const scaled = value / size
+            const precision = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2
+            const compact = scaled.toFixed(precision).replace(/\.?0+$/, '')
+            return compact + suffix
+          }
+        }
+        return value.toLocaleString()
+      }
+
+      function getLevel(value, maxValue) {
+        if (maxValue <= 0 || value <= 0) return 0
+        const gamma = 0.7
+        const scaled = Math.pow(value / maxValue, gamma)
+        const index = Math.ceil(scaled * 4) - 1
+        return Math.max(0, Math.min(index, 4))
+      }
+
+      function formatDateLabel(year, month, day) {
+        return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+      }
+
+      function getDaysInMonth(year, month) {
+        return new Date(year, month, 0).getDate()
+      }
+
+      function getFirstDayOfMonth(year, month) {
+        return new Date(year, month - 1, 1).getDay()
+      }
+
+      function getMonthName(month) {
+        const names = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+        return names[month - 1]
+      }
+
+      function renderMonth(year, month, section) {
+        const daysInMonth = getDaysInMonth(year, month)
+        const firstDay = getFirstDayOfMonth(year, month)
+        // Convert Sunday=0 to Monday=0
+        const startOffset = firstDay === 0 ? 6 : firstDay - 1
+        const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7
+
+        const dailyMap = {}
+        let maxValue = 0
+        for (const d of section.daily || []) {
+          dailyMap[d.date] = d.total
+          if (d.total > maxValue) maxValue = d.total
+        }
+
+        const colors = section.colors
+        const weekDays = ['一','二','三','四','五','六','日']
+
+        let html = '<div class="calendar-grid">'
+        // Weekday labels
+        for (const wd of weekDays) {
+          html += `<div class="weekday-label">${wd}</div>`
+        }
+        // Empty cells before month starts
+        for (let i = 0; i < startOffset; i++) {
+          html += '<div class="calendar-cell empty"></div>'
+        }
+        // Day cells
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dateStr = formatDateLabel(year, month, day)
+          const tokens = dailyMap[dateStr] || 0
+          const level = getLevel(tokens, maxValue)
+          const bgStyle = tokens > 0 ? `background:${colors[level]}` : ''
+          html += `<div class="calendar-cell" data-level="${level}" data-date="${dateStr}" data-tokens="${tokens}" style="${bgStyle}">${day}</div>`
+        }
+        // Empty cells to fill grid
+        const remaining = totalCells - startOffset - daysInMonth
+        for (let i = 0; i < remaining; i++) {
+          html += '<div class="calendar-cell empty"></div>'
+        }
+        html += '</div>'
+
+        // Stats
+        const activeDays = (section.daily || []).filter(d => d.total > 0).length
+        const totalInput = section.totalInput || 0
+        const totalOutput = section.totalOutput || 0
+        const totalCache = (section.totalCacheRead || 0) + (section.totalCacheWrite || 0)
+        html += '<div class="section-stats">'
+        html += `<div class="section-stat"><div class="section-stat-value">${formatTokenTotal(section.totalTokens || 0)}</div><div class="section-stat-label">总 Tokens</div></div>`
+        html += `<div class="section-stat"><div class="section-stat-value">${formatTokenTotal(totalInput)}</div><div class="section-stat-label">输入</div></div>`
+        html += `<div class="section-stat"><div class="section-stat-value">${formatTokenTotal(totalOutput)}</div><div class="section-stat-label">输出</div></div>`
+        html += `<div class="section-stat"><div class="section-stat-value">${formatTokenTotal(totalCache)}</div><div class="section-stat-label">缓存</div></div>`
+        html += `<div class="section-stat"><div class="section-stat-value">${activeDays}</div><div class="section-stat-label">活跃天数</div></div>`
+        if (section.insights) {
+          html += `<div class="section-stat"><div class="section-stat-value">${section.insights.streaks.current}</div><div class="section-stat-label">连续天数</div></div>`
+          html += `<div class="section-stat"><div class="section-stat-value">${section.insights.streaks.longest}</div><div class="section-stat-label">最长连续</div></div>`
+          if (section.insights.mostUsedModel) {
+            html += `<div class="section-stat"><div class="section-stat-value">${section.insights.mostUsedModel.name}</div><div class="section-stat-label">最常用模型</div></div>`
+          }
+        }
+        html += '</div>'
+
+        return html
+      }
+
+      function renderSections(data) {
+        if (!data || !data.sections || data.sections.length === 0) {
+          content.innerHTML = '<div class="error">暂无数据</div>'
+          return
+        }
+
+        currentYear = data.year
+        currentMonth = data.month
+        isCurrentMonth = data.isCurrentMonth
+
+        // Update month label
+        monthLabel.textContent = `${data.year}年${getMonthName(data.month)}`
+        btnNext.disabled = isCurrentMonth
+
+        let html = ''
+
+        for (let i = 0; i < data.sections.length; i++) {
+          const section = data.sections[i]
+          const hasData = section.daily && section.daily.length > 0 && section.totalTokens > 0
+
+          html += '<div class="section">'
+          html += '<div class="section-header">'
+          html += `<div class="section-title">${section.title}</div>`
+          html += `<div class="section-total">${formatTokenTotal(section.totalTokens || 0)} tokens</div>`
+          html += '</div>'
+
+          if (hasData) {
+            html += renderMonth(data.year, data.month, section)
+          } else {
+            html += `<div class="no-data">本月暂无数据</div>`
+          }
+
+          html += '</div>'
+        }
+
+        content.innerHTML = html
+
+        // Tooltip events
+        document.querySelectorAll('.calendar-cell:not(.empty)').forEach(cell => {
+          cell.addEventListener('mouseover', (e) => {
+            const el = e.currentTarget
+            const date = el.dataset.date
+            const tokens = parseInt(el.dataset.tokens)
+            tooltipDate.textContent = date
+            tooltipTokens.textContent = tokens > 0 ? formatTokenTotal(tokens) + ' tokens' : '无数据'
+            const rect = el.getBoundingClientRect()
+            tooltip.style.left = (rect.left + rect.width / 2) + 'px'
+            tooltip.style.top = (rect.top - 8) + 'px'
+            tooltip.style.transform = 'translate(-50%, -100%)'
+            tooltip.classList.add('visible')
+          })
+          cell.addEventListener('mouseout', () => {
+            tooltip.classList.remove('visible')
+          })
+        })
+      }
+
+      // Handle messages from extension
+      window.addEventListener('message', (event) => {
+        const msg = event.data
+        if (msg.type === 'update') {
+          renderSections(msg.data)
+        } else if (msg.type === 'theme') {
+          if (msg.isDark) {
+            document.body.classList.add('dark')
+          } else {
+            document.body.classList.remove('dark')
+          }
+        }
+      })
+
+      // Navigation
+      btnPrev.addEventListener('click', () => {
+        let newMonth = currentMonth - 1
+        let newYear = currentYear
+        if (newMonth < 1) {
+          newMonth = 12
+          newYear -= 1
+        }
+        content.innerHTML = '<div class="loading">加载中...</div>'
+        vscode.postMessage({ type: 'navigate', year: newYear, month: newMonth })
+      })
+
+      btnNext.addEventListener('click', () => {
+        if (isCurrentMonth) return
+        let newMonth = currentMonth + 1
+        let newYear = currentYear
+        if (newMonth > 12) {
+          newMonth = 1
+          newYear += 1
+        }
+        content.innerHTML = '<div class="loading">加载中...</div>'
+        vscode.postMessage({ type: 'navigate', year: newYear, month: newMonth })
+      })
+
+      // Refresh button
+      btnRefresh.addEventListener('click', () => {
+        content.innerHTML = '<div class="loading">加载中...</div>'
+        vscode.postMessage({ type: 'refresh' })
+      })
+
+      // Notify extension that webview is ready
+      vscode.postMessage({ type: 'ready' })
+    })()
+  </script>
+</body>
+</html>

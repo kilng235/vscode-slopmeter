@@ -1,0 +1,11 @@
+node_modules/
+out/
+*.vsix
+dist/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/settings.json
+.vscode/*.json
+!vscode/launch.json
+!vscode/tasks.json
