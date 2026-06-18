@@ -1,62 +1,63 @@
 # SlopMeter
 
-Track your AI coding tool usage with beautiful heatmaps in VSCode sidebar.
+在 VSCode 侧边栏跟踪 AI 编码工具的使用量热力图。
 
-## Features
+## 功能特性
 
-- 📊 Monthly heatmap calendar for AI usage
-- 🔄 Auto-detect OpenCode, Claude Code, Hermes Agent data
-- 🎨 Provider-specific color schemes
-- 📱 Compact sidebar view
-- 🔍 Detailed input/output/cache token breakdown
+- 📊 按月日历热力图展示 AI 工具使用情况
+- 🔄 自动检测 OpenCode、Claude Code、Hermes Agent 数据目录
+- 🎨 不同 Agent 专属配色方案
+- 📱 紧凑型侧边栏视图
+- 🔍 输入 / 输出 / 缓存 Token 分类统计
 
-## Supported Agents
+## 支持的 Agent
 
-| Agent | Linux | macOS | Windows | Custom Path |
-|-------|-------|-------|---------|-------------|
+| Agent | Linux | macOS | Windows | 自定义路径 |
+|-------|-------|-------|---------|-----------|
 | OpenCode | `~/.local/share/opencode/` | `~/Library/Application Support/opencode/` | `%APPDATA%\opencode\` | `slopMeter.openCodePath` |
 | Claude Code | `~/.claude/` | `~/.claude/` | `%USERPROFILE%\.claude\` | `slopMeter.claudePath` |
 | Hermes Agent | `~/.hermes/` | `~/.hermes/` | `%USERPROFILE%\.hermes\` | `slopMeter.hermesPath` |
 
-Data directories are auto-detected. If none found, the provider section shows as unavailable.
+数据目录自动检测。如果找不到对应目录，该 Agent 板块会显示"暂无数据"。
 
-## Requirements
+## 系统要求
 
 - VSCode 1.85+
-- **Optional**: Python 3.7+ for better SQLite WAL support (recommended)
+- **可选**：Python 3.7+（推荐，用于更好读取 SQLite WAL 数据）
 
-Without Python, the extension falls back to reading SQLite databases directly, which may miss the most recent few seconds of data in some cases.
+没有 Python 时，扩展会自动降级为直接读取 SQLite 数据库，可能缺少最新几秒钟的数据。
 
-## Installation
+## 安装方法
 
-### From VSIX
-1. Download the latest `.vsix` from [Releases](https://github.com/kilng235/vscode-slopmeter/releases)
-2. In VSCode: Extensions → ... → Install from VSIX...
-3. Reload window
+### 从 VSIX 安装
+1. 从 [Releases](https://github.com/kilng235/vscode-slopmeter/releases) 下载最新 `.vsix`
+2. 在 VSCode 中：扩展 → ... → 从 VSIX 安装...
+3. 重载窗口
 
-### From Marketplace (coming soon)
+### 从应用商店安装（即将推出）
 
-## Configuration
+## 配置项
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `slopMeter.providers` | `["opencode","claude","hermes"]` | Which providers to display |
-| `slopMeter.colorMode` | `"auto"` | Dark/light theme |
-| `slopMeter.openCodePath` | `""` | Custom OpenCode data path |
-| `slopMeter.claudePath` | `""` | Custom Claude Code data path |
-| `slopMeter.hermesPath` | `""` | Custom Hermes Agent data path |
+| 设置 | 默认值 | 说明 |
+|------|--------|------|
+| `slopMeter.providers` | `["opencode","claude","hermes"]` | 显示哪些 Agent |
+| `slopMeter.colorMode` | `"auto"` | 深色/浅色主题 |
+| `slopMeter.openCodePath` | `""` | 自定义 OpenCode 数据路径 |
+| `slopMeter.claudePath` | `""` | 自定义 Claude Code 数据路径 |
+| `slopMeter.hermesPath` | `""` | 自定义 Hermes Agent 数据路径 |
 
-## Data Privacy
+## 数据隐私
 
-All data is read from your local machine only. This extension:
-- ❌ Makes no network requests
-- ❌ Sends no telemetry
-- ❌ Stores no data externally
-- ✅ All data stays in your VSCode local storage
+所有数据仅在本地读取，扩展：
 
-Check the CSP in `webview-ui/index.html` to verify: `default-src 'none'`
+- ❌ 不发起任何网络请求
+- ❌ 不发送任何遥测数据
+- ❌ 不存储任何数据到外部
+- ✅ 所有数据都在你的 VSCode 本地存储中
 
-## Development
+验证：`webview-ui/index.html` 中的 CSP 设置为 `default-src 'none'`
+
+## 开发
 
 ```bash
 git clone https://github.com/kilng235/vscode-slopmeter.git
@@ -65,8 +66,8 @@ npm install
 npm run compile
 ```
 
-To test locally, press `F5` in VSCode to launch an Extension Development Host.
+本地测试：在 VSCode 中按 `F5` 启动扩展开发主机。
 
-## License
+## 许可证
 
 MIT
