@@ -72,6 +72,10 @@ npm run compile
 
 本地测试：在 VSCode 中按 `F5` 启动扩展开发主机。
 
+## 致谢
+
+本项目灵感来源于 [slopmeter-python](https://github.com/KMnO4-zx/slopmeter-python)（by [KMnO4-zx](https://github.com/KMnO4-zx)），一个基于 Python 的 AI 编码工具使用量热力图工具。本项目将其核心概念移植为 VSCode 侧边栏扩展。
+
 ## 许可证
 
 MIT
