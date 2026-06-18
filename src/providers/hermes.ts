@@ -1,12 +1,15 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import * as vscode from 'vscode'
 import { IProvider } from './types'
 import {
   UsageSummary, ProviderId, TokenTotals,
   DailyUsage, ModelUsage, Insights
 } from '../models'
 import { formatDate, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { findHermesDir, tryMtime } from '../platform/paths'
+import { findPython, isPythonAvailable } from '../platform/python'
 
 interface HermesSession {
   id: string
@@ -32,7 +35,8 @@ export class HermesProvider implements IProvider {
 
   private getBaseDir(): string {
     if (this.customPath) return this.customPath
-    return path.join(os.homedir(), '.hermes')
+    const dir = findHermesDir()
+    return dir || path.join(os.homedir(), '.hermes')
   }
 
   isAvailable(): boolean {
@@ -60,7 +64,29 @@ export class HermesProvider implements IProvider {
     return this.aggregateSessions(sessions, startMs, endMs)
   }
 
+  private pythonNoticeShown = false
+
+  private showPythonNotice() {
+    if (this.pythonNoticeShown) return
+    this.pythonNoticeShown = true
+    try {
+      vscode.window.showInformationMessage(
+        'SlopMeter: 未找到 Python，SQLite 读取将降级（可能缺少最新几秒数据）。安装 Python 3.7+ 可提升读取质量。',
+        '知道了'
+      )
+    } catch {
+      // running outside VSCode (tests)
+    }
+  }
+
   private async loadSessions(dbPath: string, startMs: number, endMs: number): Promise<HermesSession[]> {
+    const pythonCmd = findPython()
+    if (!pythonCmd) {
+      this.showPythonNotice()
+      console.error('Hermes Python script not available, trying sql.js fallback')
+      return []
+    }
+
     try {
       const { execSync } = require('child_process')
       const fs = require('fs')
@@ -108,7 +134,7 @@ json.dump(M, sys.stdout)
       fs.writeFileSync(tmpScript, pyCode)
       try {
         const result = execSync(
-          `python3 "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
+          `${pythonCmd} "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
           { encoding: 'utf-8', timeout: 30000, maxBuffer: 100 * 1024 * 1024 }
         )
         const rows = JSON.parse(result)

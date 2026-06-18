@@ -1,12 +1,15 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
+import * as vscode from 'vscode'
 import { IProvider } from './types'
 import {
   UsageSummary, ProviderId, TokenTotals, CacheTokens,
   DailyUsage, ModelUsage, Insights
 } from '../models'
 import { formatDate, parseTimestamp, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { findOpenCodeDir, tryMtime } from '../platform/paths'
+import { findPython, isPythonAvailable } from '../platform/python'
 
 interface OpenCodeMessage {
   id?: string
@@ -32,11 +35,8 @@ export class OpenCodeProvider implements IProvider {
 
   private getBaseDir(): string {
     if (this.customPath) return this.customPath
-    
-    const envDir = process.env.OPENCODE_DATA_DIR
-    if (envDir) return envDir
-    
-    return path.join(os.homedir(), '.local', 'share', 'opencode')
+    const dir = findOpenCodeDir()
+    return dir || path.join(os.homedir(), '.local', 'share', 'opencode')
   }
 
   isAvailable(): boolean {
@@ -85,7 +85,28 @@ export class OpenCodeProvider implements IProvider {
     }
   }
 
+  private pythonNoticeShown = false
+
+  private showPythonNotice() {
+    if (this.pythonNoticeShown) return
+    this.pythonNoticeShown = true
+    try {
+      vscode.window.showInformationMessage(
+        'SlopMeter: 未找到 Python，SQLite 读取将降级（可能缺少最新几秒数据）。安装 Python 3.7+ 可提升读取质量。',
+        '知道了'
+      )
+    } catch {
+      // running outside VSCode (tests)
+    }
+  }
+
   private async loadViaSqlJs(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
+    const pythonCmd = findPython()
+    if (!pythonCmd) {
+      this.showPythonNotice()
+      return await this.loadViaSqlJsFallback(dbPath)
+    }
+
     try {
       const { execSync } = require('child_process')
       const fs = require('fs')
@@ -116,7 +137,7 @@ json.dump(M, sys.stdout)
       fs.writeFileSync(tmpScript, pyCode)
       try {
         const result = execSync(
-          `python3 "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
+          `${pythonCmd} "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
           { encoding: 'utf-8', timeout: 30000, maxBuffer: 100 * 1024 * 1024 }
         )
         const rows = JSON.parse(result)

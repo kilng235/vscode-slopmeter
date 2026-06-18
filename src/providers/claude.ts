@@ -7,6 +7,7 @@ import {
   DailyUsage, ModelUsage, Insights
 } from '../models'
 import { formatDate, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { findClaudeDir, tryMtime } from '../platform/paths'
 
 interface ClaudeMessage {
   message?: {
@@ -56,7 +57,8 @@ export class ClaudeProvider implements IProvider {
 
   private getBaseDir(): string {
     if (this.customPath) return this.customPath
-    return path.join(os.homedir(), '.claude')
+    const dir = findClaudeDir()
+    return dir || path.join(os.homedir(), '.claude')
   }
 
   isAvailable(): boolean {
