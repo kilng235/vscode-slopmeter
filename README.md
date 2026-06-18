@@ -2,6 +2,10 @@
 
 在 VSCode 侧边栏跟踪 AI 编码工具的使用量热力图。
 
+## 预览
+
+![SlopMeter 热力图](assets/screenshot.jpg)
+
 ## 功能特性
 
 - 📊 按月日历热力图展示 AI 工具使用情况
