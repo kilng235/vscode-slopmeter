@@ -356,7 +356,7 @@
           html += `<div class="section-stat"><div class="section-stat-value">${section.insights.streaks.current}</div><div class="section-stat-label">连续天数</div></div>`
           html += `<div class="section-stat"><div class="section-stat-value">${section.insights.streaks.longest}</div><div class="section-stat-label">最长连续</div></div>`
           if (section.insights.mostUsedModel) {
-            html += `<div class="section-stat"><div class="section-stat-value">${section.insights.mostUsedModel.name}</div><div class="section-stat-label">最常用模型</div></div>`
+            html += `<div class="section-stat"><div class="section-stat-value">${section.insights.mostUsedModel.name} (${formatTokenTotal(section.insights.mostUsedModel.tokens)})</div><div class="section-stat-label">消耗最多模型</div></div>`
           }
         }
         html += '</div>'
