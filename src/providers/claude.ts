@@ -226,12 +226,26 @@ export class ClaudeProvider implements IProvider {
       })
     }
 
+    const modelTotals = new Map<string, number>()
+    for (const day of daily) {
+      for (const m of day.breakdown) {
+        modelTotals.set(m.name, (modelTotals.get(m.name) || 0) + m.tokens.total)
+      }
+    }
+
+    let mostUsedModel: ModelUsage | undefined
+    if (modelTotals.size > 0) {
+      const sorted = Array.from(modelTotals.entries()).sort((a, b) => b[1] - a[1])
+      mostUsedModel = { name: sorted[0][0], tokens: { input: 0, output: 0, cache: { input: 0, output: 0 }, total: sorted[0][1] } }
+    }
+
     const now = new Date()
     const insights: Insights = {
       streaks: {
         longest: computeLongestStreak(activityDates),
         current: computeCurrentStreak(activityDates, now),
       },
+      mostUsedModel,
     }
 
     return { provider: 'claude', daily, insights, totalTokens: totalTokensAll }
