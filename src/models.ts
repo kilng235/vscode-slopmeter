@@ -51,7 +51,8 @@ export interface UsageSummary {
   totalTokens: number
 }
 
-export type ProviderId = 'opencode' | 'claude' | 'hermes' | 'codex' | 'cursor' | 'gemini' | 'pi' | 'amp' | 'all'
+export type ProviderId = 'opencode' | 'claude' | 'hermes' | 'all'
+export type PlannedProviderId = 'codex' | 'cursor' | 'gemini' | 'pi' | 'amp'
 
 export type ColorMode = 'light' | 'dark'
 
@@ -61,7 +62,7 @@ export interface ProviderConfig {
   enabled: boolean
 }
 
-export const PROVIDER_META: Record<ProviderId, { name: string; colors: Record<ColorMode, string[]> }> = {
+export const PROVIDER_META: Record<ProviderId | PlannedProviderId, { name: string; colors: Record<ColorMode, string[]> }> = {
   opencode: {
     name: 'Open Code',
     colors: {
