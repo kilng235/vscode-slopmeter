@@ -17,8 +17,7 @@
   ],
   "activationEvents": [
     "onView:slopMeter.heatmap",
-    "onCommand:slopMeter.refresh",
-    "onCommand:slopMeter.export"
+    "onCommand:slopMeter.refresh"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -45,11 +44,6 @@
         "command": "slopMeter.refresh",
         "title": "SlopMeter: Refresh Heatmap",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "slopMeter.export",
-        "title": "SlopMeter: Export Heatmap",
-        "icon": "$(export)"
       }
     ],
     "configuration": {
@@ -101,8 +95,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
