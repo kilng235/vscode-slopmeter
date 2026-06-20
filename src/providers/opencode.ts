@@ -3,13 +3,11 @@ import * as path from 'path'
 import * as os from 'os'
 import * as vscode from 'vscode'
 import { IProvider } from './types'
-import {
-  UsageSummary, ProviderId, TokenTotals, CacheTokens,
-  DailyUsage, ModelUsage, Insights
-} from '../models'
-import { formatDate, parseTimestamp, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { UsageSummary, ProviderId } from '../models'
 import { findOpenCodeDir, tryMtime } from '../platform/paths'
-import { findPython, isPythonAvailable } from '../platform/python'
+import { findPython, showPythonNotice } from '../platform/python'
+import { aggregateEntries, NormalizedEntry } from './aggregator'
+import { walkDir } from '../utils'
 
 interface OpenCodeMessage {
   id?: string
@@ -43,10 +41,8 @@ export class OpenCodeProvider implements IProvider {
     try {
       const baseDir = this.getBaseDir()
       if (!fs.existsSync(baseDir)) return false
-      
       const dbPath = path.join(baseDir, 'opencode.db')
       const messagesDir = path.join(baseDir, 'storage', 'message')
-      
       return fs.existsSync(dbPath) || fs.existsSync(messagesDir)
     } catch {
       return false
@@ -56,24 +52,59 @@ export class OpenCodeProvider implements IProvider {
   async loadData(start: Date, end: Date): Promise<UsageSummary> {
     const baseDir = this.getBaseDir()
     const dbPath = path.join(baseDir, 'opencode.db')
-    
+
     let messages: OpenCodeMessage[] = []
-    
+
     if (fs.existsSync(dbPath)) {
-      // Python script filters by date range directly
       const startMs = start.getTime()
       const endMs = end.getTime()
       messages = await this.loadFromDatabase(dbPath, startMs, endMs)
     }
-    
+
     if (messages.length === 0) {
       const messagesDir = path.join(baseDir, 'storage', 'message')
       if (fs.existsSync(messagesDir)) {
         messages = this.loadFromFiles(messagesDir)
       }
     }
-    
-    return this.aggregateMessages(messages, start, end)
+
+    const entries = this.normalizeEntries(messages, start, end)
+    return aggregateEntries('opencode', entries, start, end)
+  }
+
+  private normalizeEntries(messages: OpenCodeMessage[], start: Date, end: Date): NormalizedEntry[] {
+    const entries: NormalizedEntry[] = []
+    const startMs = start.getTime()
+    const endMs = end.getTime()
+
+    for (const msg of messages) {
+      const timeValue = msg.time?.created
+      if (!timeValue) continue
+
+      let ts = typeof timeValue === 'number' ? timeValue : parseInt(String(timeValue), 10)
+      if (ts > 1e12) ts /= 1000
+      const timestampMs = ts * 1000
+
+      if (timestampMs < startMs || timestampMs > endMs) continue
+
+      const tokens = msg.tokens
+      if (!tokens) continue
+
+      const inputTokens = (tokens.input || 0) + (tokens.cache?.read || 0) + (tokens.cache?.write || 0)
+      const outputTokens = tokens.output || 0
+      if (inputTokens + outputTokens <= 0) continue
+
+      entries.push({
+        timestamp: timestampMs,
+        inputTokens,
+        outputTokens,
+        cacheRead: tokens.cache?.read || 0,
+        cacheWrite: tokens.cache?.write || 0,
+        modelName: msg.modelID || 'unknown',
+      })
+    }
+
+    return entries
   }
 
   private async loadFromDatabase(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
@@ -85,25 +116,10 @@ export class OpenCodeProvider implements IProvider {
     }
   }
 
-  private pythonNoticeShown = false
-
-  private showPythonNotice() {
-    if (this.pythonNoticeShown) return
-    this.pythonNoticeShown = true
-    try {
-      vscode.window.showInformationMessage(
-        'SlopMeter: 未找到 Python，SQLite 读取将降级（可能缺少最新几秒数据）。安装 Python 3.7+ 可提升读取质量。',
-        '知道了'
-      )
-    } catch {
-      // running outside VSCode (tests)
-    }
-  }
-
   private async loadViaSqlJs(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
     const pythonCmd = findPython()
     if (!pythonCmd) {
-      this.showPythonNotice()
+      showPythonNotice()
       return await this.loadViaSqlJsFallback(dbPath)
     }
 
@@ -182,15 +198,9 @@ json.dump(M, sys.stdout)
     return messages
   }
 
-  private getExtensionPath(): string {
-    if (this.extensionUri) return this.extensionUri
-    // Fallback: __dirname is out/providers, go up 2 levels to extension root
-    return require('path').join(__dirname, '..', '..')
-  }
-
   private loadFromFiles(dir: string): OpenCodeMessage[] {
     const messages: OpenCodeMessage[] = []
-    this.walkDir(dir, '.json', (filePath) => {
+    walkDir(dir, '.json', (filePath) => {
       try {
         const content = fs.readFileSync(filePath, 'utf-8')
         const msg = JSON.parse(content)
@@ -202,130 +212,5 @@ json.dump(M, sys.stdout)
       }
     })
     return messages
-  }
-
-  private walkDir(dir: string, ext: string, callback: (file: string) => void): void {
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
-        if (entry.isDirectory()) {
-          this.walkDir(fullPath, ext, callback)
-        } else if (entry.name.endsWith(ext)) {
-          callback(fullPath)
-        }
-      }
-    } catch {
-      // skip
-    }
-  }
-
-  private aggregateMessages(messages: OpenCodeMessage[], start: Date, end: Date): UsageSummary {
-    const dailyMap = new Map<string, { total: number; input: number; output: number; cacheRead: number; cacheWrite: number; models: Map<string, TokenTotals>; hourly: { hour: number; total: number; input: number; output: number }[] }>()
-    const startMs = start.getTime()
-    const endMs = end.getTime()
-
-    for (const msg of messages) {
-      const timeValue = msg.time?.created
-      if (!timeValue) continue
-
-      let ts = typeof timeValue === 'number' ? timeValue : parseInt(String(timeValue), 10)
-      if (ts > 1e12) ts /= 1000
-
-      if (ts < startMs / 1000 || ts > endMs / 1000) continue
-
-      const date = new Date(ts * 1000)
-      const dateKey = formatDate(date)
-
-      const tokens = msg.tokens
-      if (!tokens) continue
-
-      const inputTokens = (tokens.input || 0) + (tokens.cache?.read || 0) + (tokens.cache?.write || 0)
-      const outputTokens = tokens.output || 0
-      const totalTokens = inputTokens + outputTokens
-      if (totalTokens <= 0) continue
-
-      if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, models: new Map(), hourly: [] })
-      }
-
-      const day = dailyMap.get(dateKey)!
-      day.total += totalTokens
-      day.input += inputTokens
-      day.output += outputTokens
-      day.cacheRead += tokens.cache?.read || 0
-      day.cacheWrite += tokens.cache?.write || 0
-
-      const hour = date.getHours()
-      let hourEntry = day.hourly.find(h => h.hour === hour)
-      if (!hourEntry) {
-        hourEntry = { hour, total: 0, input: 0, output: 0 }
-        day.hourly.push(hourEntry)
-      }
-      hourEntry.total += totalTokens
-      hourEntry.input += inputTokens
-      hourEntry.output += outputTokens
-
-      if (msg.modelID) {
-        if (!day.models.has(msg.modelID)) {
-          day.models.set(msg.modelID, { input: 0, output: 0, cache: { input: 0, output: 0 }, total: 0 })
-        }
-        const mt = day.models.get(msg.modelID)!
-        mt.input += inputTokens
-        mt.output += outputTokens
-        mt.total += totalTokens
-      }
-    }
-
-    const daily: DailyUsage[] = []
-    let totalTokensAll = 0
-    const activityDates: string[] = []
-
-    const sortedKeys = Array.from(dailyMap.keys()).sort()
-    for (const key of sortedKeys) {
-      const day = dailyMap.get(key)!
-      totalTokensAll += day.total
-      if (day.total > 0) activityDates.push(key)
-
-      const breakdown: ModelUsage[] = []
-      day.models.forEach((mt, name) => {
-        breakdown.push({ name, tokens: mt })
-      })
-      breakdown.sort((a, b) => b.tokens.total - a.tokens.total)
-
-      daily.push({
-        date: key,
-        input: day.input,
-        output: day.output,
-        cache: { input: day.cacheRead, output: day.cacheWrite },
-        total: day.total,
-        breakdown,
-        hourly: day.hourly || [],
-      })
-    }
-
-    const modelTotals = new Map<string, number>()
-    for (const day of daily) {
-      for (const m of day.breakdown) {
-        modelTotals.set(m.name, (modelTotals.get(m.name) || 0) + m.tokens.total)
-      }
-    }
-
-    let mostUsedModel: ModelUsage | undefined
-    if (modelTotals.size > 0) {
-      const sorted = Array.from(modelTotals.entries()).sort((a, b) => b[1] - a[1])
-      mostUsedModel = { name: sorted[0][0], tokens: { input: 0, output: 0, cache: { input: 0, output: 0 }, total: sorted[0][1] } }
-    }
-
-    const now = new Date()
-    const insights: Insights = {
-      streaks: {
-        longest: computeLongestStreak(activityDates),
-        current: computeCurrentStreak(activityDates, now),
-      },
-      mostUsedModel,
-    }
-
-    return { provider: 'opencode', daily, insights, totalTokens: totalTokensAll }
   }
 }

@@ -3,13 +3,10 @@ import * as path from 'path'
 import * as os from 'os'
 import * as vscode from 'vscode'
 import { IProvider } from './types'
-import {
-  UsageSummary, ProviderId, TokenTotals,
-  DailyUsage, ModelUsage, Insights
-} from '../models'
-import { formatDate, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { UsageSummary, ProviderId } from '../models'
 import { findHermesDir, tryMtime } from '../platform/paths'
-import { findPython, isPythonAvailable } from '../platform/python'
+import { findPython, showPythonNotice } from '../platform/python'
+import { aggregateEntries, NormalizedEntry } from './aggregator'
 
 interface HermesSession {
   id: string
@@ -61,28 +58,14 @@ export class HermesProvider implements IProvider {
     const startMs = start.getTime()
     const endMs = end.getTime()
     const sessions = await this.loadSessions(dbPath, startMs, endMs)
-    return this.aggregateSessions(sessions, startMs, endMs)
-  }
-
-  private pythonNoticeShown = false
-
-  private showPythonNotice() {
-    if (this.pythonNoticeShown) return
-    this.pythonNoticeShown = true
-    try {
-      vscode.window.showInformationMessage(
-        'SlopMeter: 未找到 Python，SQLite 读取将降级（可能缺少最新几秒数据）。安装 Python 3.7+ 可提升读取质量。',
-        '知道了'
-      )
-    } catch {
-      // running outside VSCode (tests)
-    }
+    const entries = this.normalizeEntries(sessions, start, end)
+    return aggregateEntries('hermes', entries, start, end)
   }
 
   private async loadSessions(dbPath: string, startMs: number, endMs: number): Promise<HermesSession[]> {
     const pythonCmd = findPython()
     if (!pythonCmd) {
-      this.showPythonNotice()
+      showPythonNotice()
       console.error('Hermes Python script not available, trying sql.js fallback')
       return []
     }
@@ -104,7 +87,6 @@ for x in ['-wal', '-shm']:
     p = db + x
     if os.path.exists(p): shutil.copy2(p, t + x)
 c = sqlite3.connect('file:' + t + '?mode=ro', uri=True)
-# started_at is in seconds (float), convert to ms for comparison
 r = c.execute(
     """SELECT id, model, started_at, input_tokens, output_tokens,
               cache_read_tokens, cache_write_tokens, reasoning_tokens,
@@ -154,110 +136,31 @@ json.dump(M, sys.stdout)
     }
   }
 
-  private aggregateSessions(sessions: HermesSession[], startMs: number, endMs: number): UsageSummary {
-    const dailyMap = new Map<string, {
-      total: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number;
-      models: Map<string, TokenTotals>;
-      hourly: { hour: number; total: number; input: number; output: number }[]
-    }>()
+  private normalizeEntries(sessions: HermesSession[], start: Date, end: Date): NormalizedEntry[] {
+    const entries: NormalizedEntry[] = []
+    const startMs = start.getTime()
+    const endMs = end.getTime()
 
     for (const session of sessions) {
       if (!session.started_at) continue
 
-      // started_at is in seconds, convert to ms for date formatting
-      let tsMs = session.started_at * 1000
+      const tsMs = session.started_at * 1000
       if (tsMs < startMs || tsMs > endMs) continue
-
-      const date = new Date(tsMs)
-      const dateKey = formatDate(date)
 
       const inputTokens = session.input_tokens + session.cache_read_tokens + session.cache_write_tokens
       const outputTokens = session.output_tokens + session.reasoning_tokens
-      const totalTokens = inputTokens + outputTokens
+      if (inputTokens + outputTokens <= 0) continue
 
-      if (totalTokens <= 0) continue
-
-      if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, models: new Map(), hourly: [] })
-      }
-
-      const day = dailyMap.get(dateKey)!
-      day.total += totalTokens
-      day.input += inputTokens
-      day.output += outputTokens
-      day.cacheRead += session.cache_read_tokens
-      day.cacheWrite += session.cache_write_tokens
-      day.reasoning += session.reasoning_tokens
-
-      const hour = date.getHours()
-      let hourEntry = day.hourly.find(h => h.hour === hour)
-      if (!hourEntry) {
-        hourEntry = { hour, total: 0, input: 0, output: 0 }
-        day.hourly.push(hourEntry)
-      }
-      hourEntry.total += totalTokens
-      hourEntry.input += inputTokens
-      hourEntry.output += outputTokens
-
-      const modelName = session.model || 'hermes'
-      if (!day.models.has(modelName)) {
-        day.models.set(modelName, { input: 0, output: 0, cache: { input: 0, output: 0 }, total: 0 })
-      }
-      const mt = day.models.get(modelName)!
-      mt.input += inputTokens
-      mt.output += outputTokens
-      mt.total += totalTokens
-    }
-
-    const daily: DailyUsage[] = []
-    let totalTokensAll = 0
-    const activityDates: string[] = []
-
-    const sortedKeys = Array.from(dailyMap.keys()).sort()
-    for (const key of sortedKeys) {
-      const day = dailyMap.get(key)!
-      totalTokensAll += day.total
-      if (day.total > 0) activityDates.push(key)
-
-      const breakdown: ModelUsage[] = []
-      day.models.forEach((mt, name) => {
-        breakdown.push({ name, tokens: mt })
-      })
-      breakdown.sort((a, b) => b.tokens.total - a.tokens.total)
-
-      daily.push({
-        date: key,
-        input: day.input,
-        output: day.output,
-        cache: { input: day.cacheRead, output: day.cacheWrite },
-        total: day.total,
-        breakdown,
-        hourly: day.hourly || [],
+      entries.push({
+        timestamp: tsMs,
+        inputTokens,
+        outputTokens,
+        cacheRead: session.cache_read_tokens,
+        cacheWrite: session.cache_write_tokens,
+        modelName: session.model || 'hermes',
       })
     }
 
-    const modelTotals = new Map<string, number>()
-    for (const day of daily) {
-      for (const m of day.breakdown) {
-        modelTotals.set(m.name, (modelTotals.get(m.name) || 0) + m.tokens.total)
-      }
-    }
-
-    let mostUsedModel: ModelUsage | undefined
-    if (modelTotals.size > 0) {
-      const sorted = Array.from(modelTotals.entries()).sort((a, b) => b[1] - a[1])
-      mostUsedModel = { name: sorted[0][0], tokens: { input: 0, output: 0, cache: { input: 0, output: 0 }, total: sorted[0][1] } }
-    }
-
-    const now = new Date()
-    const insights: Insights = {
-      streaks: {
-        longest: computeLongestStreak(activityDates),
-        current: computeCurrentStreak(activityDates, now),
-      },
-      mostUsedModel,
-    }
-
-    return { provider: 'hermes', daily, insights, totalTokens: totalTokensAll }
+    return entries
   }
 }

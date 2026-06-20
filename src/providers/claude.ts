@@ -2,12 +2,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { IProvider } from './types'
-import {
-  UsageSummary, ProviderId, TokenTotals,
-  DailyUsage, ModelUsage, Insights
-} from '../models'
-import { formatDate, computeLongestStreak, computeCurrentStreak } from '../utils'
+import { UsageSummary, ProviderId } from '../models'
 import { findClaudeDir, tryMtime } from '../platform/paths'
+import { aggregateEntries, NormalizedEntry } from './aggregator'
+import { walkDir } from '../utils'
 
 interface ClaudeMessage {
   message?: {
@@ -75,7 +73,8 @@ export class ClaudeProvider implements IProvider {
 
   async loadData(start: Date, end: Date): Promise<UsageSummary> {
     const messages = this.collectMessages()
-    return this.aggregateMessages(messages, start, end)
+    const entries = this.normalizeEntries(messages, start, end)
+    return aggregateEntries('claude', entries, start, end)
   }
 
   private collectMessages(): ClaudeMessage[] {
@@ -84,8 +83,7 @@ export class ClaudeProvider implements IProvider {
     const projectsDir = path.join(baseDir, 'projects')
 
     if (fs.existsSync(projectsDir)) {
-      // Collect .json files (legacy format)
-      this.walkDir(projectsDir, '.json', (filePath) => {
+      walkDir(projectsDir, '.json', (filePath) => {
         try {
           const content = fs.readFileSync(filePath, 'utf-8')
           const data = JSON.parse(content)
@@ -103,8 +101,7 @@ export class ClaudeProvider implements IProvider {
         }
       })
 
-      // Collect .jsonl files (new format with usage tokens)
-      this.walkDir(projectsDir, '.jsonl', (filePath) => {
+      walkDir(projectsDir, '.jsonl', (filePath) => {
         try {
           const content = fs.readFileSync(filePath, 'utf-8')
           const lines = content.split('\n')
@@ -129,28 +126,8 @@ export class ClaudeProvider implements IProvider {
     return messages
   }
 
-  private walkDir(dir: string, ext: string, callback: (file: string) => void): void {
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
-        if (entry.isDirectory()) {
-          this.walkDir(fullPath, ext, callback)
-        } else if (entry.name.endsWith(ext)) {
-          callback(fullPath)
-        }
-      }
-    } catch {
-      // skip
-    }
-  }
-
-  private aggregateMessages(messages: ClaudeMessage[], start: Date, end: Date): UsageSummary {
-    const dailyMap = new Map<string, {
-      total: number; input: number; output: number; cacheRead: number; cacheWrite: number;
-      models: Map<string, TokenTotals>;
-      hourly: { hour: number; total: number; input: number; output: number }[]
-    }>()
+  private normalizeEntries(messages: ClaudeMessage[], start: Date, end: Date): NormalizedEntry[] {
+    const entries: NormalizedEntry[] = []
     const startMs = start.getTime()
     const endMs = end.getTime()
 
@@ -165,102 +142,27 @@ export class ClaudeProvider implements IProvider {
 
       if (ts < startMs || ts > endMs) continue
 
-      const date = new Date(ts)
-      const dateKey = formatDate(date)
       const meta = msg.message?.metadata || {}
       const usage = msg.message?.usage || {}
       const tok = msg.tokens
 
-      // Support multiple token formats
       const inputTokens = tok?.input || usage.input_tokens || meta.input_tokens || 0
       const outputTokens = tok?.output || usage.output_tokens || meta.output_tokens || 0
       const cacheRead = tok?.cache_read || usage.cache_read_input_tokens || meta.cache_read_input_tokens || 0
       const cacheWrite = tok?.cache_write || usage.cache_creation_input_tokens || meta.cache_creation_input_tokens || 0
-      const totalTokens = inputTokens + outputTokens + cacheRead + cacheWrite
-      if (totalTokens <= 0) continue
 
-      if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, models: new Map(), hourly: [] })
-      }
+      if (inputTokens + outputTokens <= 0) continue
 
-      const day = dailyMap.get(dateKey)!
-      day.total += totalTokens
-      day.input += inputTokens
-      day.output += outputTokens
-      day.cacheRead += cacheRead
-      day.cacheWrite += cacheWrite
-
-      const hour = date.getHours()
-      let hourEntry = day.hourly.find(h => h.hour === hour)
-      if (!hourEntry) {
-        hourEntry = { hour, total: 0, input: 0, output: 0 }
-        day.hourly.push(hourEntry)
-      }
-      hourEntry.total += totalTokens
-      hourEntry.input += inputTokens
-      hourEntry.output += outputTokens
-
-      const modelName = msg.model || msg.message?.model || 'claude'
-      if (!day.models.has(modelName)) {
-        day.models.set(modelName, { input: 0, output: 0, cache: { input: 0, output: 0 }, total: 0 })
-      }
-      const mt = day.models.get(modelName)!
-      mt.input += inputTokens
-      mt.output += outputTokens
-      mt.cache.input += cacheRead
-      mt.cache.output += cacheWrite
-      mt.total += totalTokens
-    }
-
-    const daily: DailyUsage[] = []
-    let totalTokensAll = 0
-    const activityDates: string[] = []
-
-    const sortedKeys = Array.from(dailyMap.keys()).sort()
-    for (const key of sortedKeys) {
-      const day = dailyMap.get(key)!
-      totalTokensAll += day.total
-      if (day.total > 0) activityDates.push(key)
-
-      const breakdown: ModelUsage[] = []
-      day.models.forEach((mt, name) => {
-        breakdown.push({ name, tokens: mt })
-      })
-      breakdown.sort((a, b) => b.tokens.total - a.tokens.total)
-
-      daily.push({
-        date: key,
-        input: day.input,
-        output: day.output,
-        cache: { input: day.cacheRead, output: day.cacheWrite },
-        total: day.total,
-        breakdown,
-        hourly: day.hourly || [],
+      entries.push({
+        timestamp: ts,
+        inputTokens: inputTokens + cacheRead + cacheWrite,
+        outputTokens,
+        cacheRead,
+        cacheWrite,
+        modelName: msg.model || msg.message?.model || 'claude',
       })
     }
 
-    const modelTotals = new Map<string, number>()
-    for (const day of daily) {
-      for (const m of day.breakdown) {
-        modelTotals.set(m.name, (modelTotals.get(m.name) || 0) + m.tokens.total)
-      }
-    }
-
-    let mostUsedModel: ModelUsage | undefined
-    if (modelTotals.size > 0) {
-      const sorted = Array.from(modelTotals.entries()).sort((a, b) => b[1] - a[1])
-      mostUsedModel = { name: sorted[0][0], tokens: { input: 0, output: 0, cache: { input: 0, output: 0 }, total: sorted[0][1] } }
-    }
-
-    const now = new Date()
-    const insights: Insights = {
-      streaks: {
-        longest: computeLongestStreak(activityDates),
-        current: computeCurrentStreak(activityDates, now),
-      },
-      mostUsedModel,
-    }
-
-    return { provider: 'claude', daily, insights, totalTokens: totalTokensAll }
+    return entries
   }
 }

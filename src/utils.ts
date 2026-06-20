@@ -1,3 +1,6 @@
+import * as fs from 'fs'
+import * as path from 'path'
+
 export function formatDate(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -120,4 +123,20 @@ export function formatTokenTotal(value: number): string {
     }
   }
   return value.toLocaleString()
+}
+
+export function walkDir(dir: string, ext: string, callback: (file: string) => void): void {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walkDir(fullPath, ext, callback)
+      } else if (entry.name.endsWith(ext)) {
+        callback(fullPath)
+      }
+    }
+  } catch {
+    // skip
+  }
 }
