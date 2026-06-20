@@ -109,27 +109,22 @@ export class OpenCodeProvider implements IProvider {
 
   private async loadFromDatabase(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
     try {
-      return await this.loadViaSqlJs(dbPath, startMs, endMs)
+      return await this.loadViaSqlJsAsync(dbPath, startMs, endMs)
     } catch (e) {
       console.error('Failed to load database:', e)
       return []
     }
   }
 
-  private async loadViaSqlJs(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
+  private async loadViaSqlJsAsync(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
     const pythonCmd = findPython()
     if (!pythonCmd) {
       showPythonNotice()
-      return await this.loadViaSqlJsFallback(dbPath)
+      return await this.loadViaSqlJsFallback(dbPath, startMs, endMs)
     }
 
     try {
-      const { execSync } = require('child_process')
-      const fs = require('fs')
-      const os = require('os')
-      const path = require('path')
-
-      const tmpScript = path.join(os.tmpdir(), `slopmeter_read.py`)
+      const { runPythonScript } = await import('../platform/python')
       const pyCode = `
 import sqlite3, json, sys, os, shutil, tempfile
 db, s, e = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
@@ -150,41 +145,40 @@ c.close()
 shutil.rmtree(d, ignore_errors=True)
 json.dump(M, sys.stdout)
 `
-      fs.writeFileSync(tmpScript, pyCode)
-      try {
-        const result = execSync(
-          `${pythonCmd} "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
-          { encoding: 'utf-8', timeout: 30000, maxBuffer: 100 * 1024 * 1024 }
-        )
-        const rows = JSON.parse(result)
-        const messages: OpenCodeMessage[] = []
-        for (const row of rows) {
-          if (row && typeof row === 'object') {
-            messages.push(row as OpenCodeMessage)
-          }
+      const result = await runPythonScript(
+        pythonCmd,
+        pyCode,
+        [dbPath, String(startMs), String(endMs)],
+        30000
+      )
+      const rows = JSON.parse(result)
+      const messages: OpenCodeMessage[] = []
+      for (const row of rows) {
+        if (row && typeof row === 'object') {
+          messages.push(row as OpenCodeMessage)
         }
-        return messages
-      } finally {
-        try { fs.unlinkSync(tmpScript) } catch {}
       }
+      return messages
     } catch (e) {
       console.error('Python script failed, trying sql.js fallback:', e)
-      return await this.loadViaSqlJsFallback(dbPath)
+      return await this.loadViaSqlJsFallback(dbPath, startMs, endMs)
     }
   }
 
-  private async loadViaSqlJsFallback(dbPath: string): Promise<OpenCodeMessage[]> {
+  private async loadViaSqlJsFallback(dbPath: string, startMs: number, endMs: number): Promise<OpenCodeMessage[]> {
     const initSqlJs = require('sql.js')
     const buffer = fs.readFileSync(dbPath)
     const SQL = await initSqlJs()
     const db = new SQL.Database(buffer)
-    const results = db.exec("SELECT id, data FROM message ORDER BY time_created ASC")
-    db.close()
 
-    if (results.length === 0) return []
-    const rows = results[0].values
+    const startSec = Math.floor(startMs / 1000)
+    const endSec = Math.floor(endMs / 1000)
+    const stmt = db.prepare("SELECT id, data FROM message WHERE time_created >= ? AND time_created <= ? ORDER BY time_created ASC")
+    stmt.bind([startSec, endSec])
+
     const messages: OpenCodeMessage[] = []
-    for (const row of rows) {
+    while (stmt.step()) {
+      const row = stmt.get()
       try {
         const id = row[0]
         const rawData = row[1]
@@ -195,6 +189,8 @@ json.dump(M, sys.stdout)
         // skip invalid rows
       }
     }
+    stmt.free()
+    db.close()
     return messages
   }
 
