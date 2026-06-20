@@ -179,7 +179,7 @@ json.dump(M, sys.stdout)
       const tsMs = session.started_at * 1000
       if (tsMs < startMs || tsMs > endMs) continue
 
-      const inputTokens = session.input_tokens
+      const inputTokens = session.input_tokens + session.cache_read_tokens + session.cache_write_tokens
       const outputTokens = session.output_tokens + session.reasoning_tokens
       if (inputTokens + outputTokens <= 0) continue
 
