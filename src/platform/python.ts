@@ -1,4 +1,8 @@
-import { execSync } from 'child_process'
+import { execSync, execFile } from 'child_process'
+import { promisify } from 'util'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import * as vscode from 'vscode'
 
 let _pythonCmd: string | null = null
@@ -39,5 +43,26 @@ export function showPythonNotice(): void {
     )
   } catch {
     // running outside VSCode (tests)
+  }
+}
+
+const execFileAsync = promisify(execFile)
+
+export async function runPythonScript(
+  pythonPath: string,
+  scriptContent: string,
+  args: string[] = [],
+  timeoutMs: number = 15000
+): Promise<string> {
+  const tmpFile = path.join(os.tmpdir(), `slopmeter_${Date.now()}.py`)
+  try {
+    fs.writeFileSync(tmpFile, scriptContent, 'utf-8')
+    const { stdout } = await execFileAsync(pythonPath, [tmpFile, ...args], {
+      timeout: timeoutMs,
+      maxBuffer: 50 * 1024 * 1024,
+    })
+    return stdout
+  } finally {
+    try { fs.unlinkSync(tmpFile) } catch {}
   }
 }
