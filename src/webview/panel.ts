@@ -5,6 +5,7 @@ import * as path from 'path'
 import { getProviderRegistry } from '../providers'
 import { PROVIDER_META, ColorMode } from '../models'
 import { DataCache } from '../cache/dataCache'
+import { formatDate } from '../utils'
 
 interface HeatmapSection {
   title: string
@@ -18,6 +19,7 @@ interface HeatmapSection {
     streaks: { longest: number; current: number }
     mostUsedModel?: { name: string; tokens: number }
   }
+  yesterdayHourly: { hour: number; total: number; input: number; output: number }[]
   colors: string[]
 }
 
@@ -195,6 +197,12 @@ export class SlopMeterPanel implements vscode.WebviewViewProvider {
               ? { name: summary.insights.mostUsedModel.name, tokens: summary.insights.mostUsedModel.tokens.total }
               : undefined,
           } : undefined,
+          yesterdayHourly: (() => {
+            const yesterday = new Date()
+            yesterday.setDate(yesterday.getDate() - 1)
+            const yesterdayKey = formatDate(yesterday)
+            return summary.daily.find(d => d.date === yesterdayKey)?.hourly || []
+          })(),
           colors: meta.colors[mode],
         })
       } catch (e) {

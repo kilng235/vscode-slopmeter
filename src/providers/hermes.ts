@@ -157,7 +157,8 @@ json.dump(M, sys.stdout)
   private aggregateSessions(sessions: HermesSession[], startMs: number, endMs: number): UsageSummary {
     const dailyMap = new Map<string, {
       total: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number;
-      models: Map<string, TokenTotals>
+      models: Map<string, TokenTotals>;
+      hourly: { hour: number; total: number; input: number; output: number }[]
     }>()
 
     for (const session of sessions) {
@@ -177,7 +178,7 @@ json.dump(M, sys.stdout)
       if (totalTokens <= 0) continue
 
       if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, models: new Map() })
+        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, models: new Map(), hourly: [] })
       }
 
       const day = dailyMap.get(dateKey)!
@@ -187,6 +188,16 @@ json.dump(M, sys.stdout)
       day.cacheRead += session.cache_read_tokens
       day.cacheWrite += session.cache_write_tokens
       day.reasoning += session.reasoning_tokens
+
+      const hour = date.getHours()
+      let hourEntry = day.hourly.find(h => h.hour === hour)
+      if (!hourEntry) {
+        hourEntry = { hour, total: 0, input: 0, output: 0 }
+        day.hourly.push(hourEntry)
+      }
+      hourEntry.total += totalTokens
+      hourEntry.input += inputTokens
+      hourEntry.output += outputTokens
 
       const modelName = session.model || 'hermes'
       if (!day.models.has(modelName)) {
@@ -221,6 +232,7 @@ json.dump(M, sys.stdout)
         cache: { input: day.cacheRead, output: day.cacheWrite },
         total: day.total,
         breakdown,
+        hourly: day.hourly || [],
       })
     }
 

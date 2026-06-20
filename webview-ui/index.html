@@ -213,6 +213,58 @@
     .tooltip-date { font-weight: 600; }
     .tooltip-tokens { color: #adbac7; }
 
+    .hourly-section {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border-color);
+    }
+    .hourly-title {
+      font-size: 11px;
+      color: var(--muted-color);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hourly-grid {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 3px;
+      margin-bottom: 6px;
+    }
+    .hourly-cell {
+      aspect-ratio: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: outline 0.1s;
+      min-height: 20px;
+    }
+    .hourly-cell:hover {
+      outline: 2px solid var(--hover-outline);
+      outline-offset: 1px;
+    }
+    .hourly-cell.empty {
+      background: var(--empty-cell);
+    }
+    .hourly-labels {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 3px;
+    }
+    .hourly-label {
+      font-size: 8px;
+      color: var(--muted-color);
+      text-align: center;
+    }
+    .hourly-label:nth-child(odd) {
+      visibility: hidden;
+    }
+    .hourly-peak {
+      font-size: 10px;
+      color: var(--muted-color);
+      margin-top: 4px;
+    }
+
     .no-data {
       padding: 16px;
       text-align: center;
@@ -361,6 +413,40 @@
         }
         html += '</div>'
 
+        // Yesterday hourly heatmap
+        if (section.yesterdayHourly && section.yesterdayHourly.length > 0) {
+          const hourly = section.yesterdayHourly
+          const maxHourly = Math.max(...hourly.map(h => h.total), 1)
+          const colors = section.colors
+
+          html += '<div class="hourly-section">'
+          html += '<div class="hourly-title">⏰ 昨日时段</div>'
+          html += '<div class="hourly-grid">'
+          for (let h = 0; h < 24; h++) {
+            const entry = hourly.find(e => e.hour === h)
+            const tokens = entry ? entry.total : 0
+            const level = getLevel(tokens, maxHourly)
+            const bgStyle = tokens > 0 ? `background:${colors[level]}` : ''
+            html += `<div class="hourly-cell${tokens === 0 ? ' empty' : ''}" data-hour="${h}" data-tokens="${tokens}" style="${bgStyle}"></div>`
+          }
+          html += '</div>'
+
+          // Hour labels
+          html += '<div class="hourly-labels">'
+          for (let h = 0; h < 24; h++) {
+            html += `<div class="hourly-label">${String(h).padStart(2, '0')}</div>`
+          }
+          html += '</div>'
+
+          // Peak hour
+          const peakHour = hourly.reduce((max, h) => h.total > max.total ? h : max, { hour: 0, total: 0 })
+          if (peakHour.total > 0) {
+            html += `<div class="hourly-peak">峰值：${String(peakHour.hour).padStart(2, '0')}:00-${String(peakHour.hour + 1).padStart(2, '0')}:00（${formatTokenTotal(peakHour.total)} tokens）</div>`
+          }
+
+          html += '</div>'
+        }
+
         return html
       }
 
@@ -408,6 +494,25 @@
             const date = el.dataset.date
             const tokens = parseInt(el.dataset.tokens)
             tooltipDate.textContent = date
+            tooltipTokens.textContent = tokens > 0 ? formatTokenTotal(tokens) + ' tokens' : '无数据'
+            const rect = el.getBoundingClientRect()
+            tooltip.style.left = (rect.left + rect.width / 2) + 'px'
+            tooltip.style.top = (rect.top - 8) + 'px'
+            tooltip.style.transform = 'translate(-50%, -100%)'
+            tooltip.classList.add('visible')
+          })
+          cell.addEventListener('mouseout', () => {
+            tooltip.classList.remove('visible')
+          })
+        })
+
+        // Hourly heatmap tooltip
+        document.querySelectorAll('.hourly-cell:not(.empty)').forEach(cell => {
+          cell.addEventListener('mouseover', (e) => {
+            const el = e.currentTarget
+            const hour = el.dataset.hour
+            const tokens = parseInt(el.dataset.tokens)
+            tooltipDate.textContent = `${String(hour).padStart(2, '0')}:00 - ${String(parseInt(hour) + 1).padStart(2, '0')}:00`
             tooltipTokens.textContent = tokens > 0 ? formatTokenTotal(tokens) + ' tokens' : '无数据'
             const rect = el.getBoundingClientRect()
             tooltip.style.left = (rect.left + rect.width / 2) + 'px'

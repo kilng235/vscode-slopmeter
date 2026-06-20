@@ -148,7 +148,8 @@ export class ClaudeProvider implements IProvider {
   private aggregateMessages(messages: ClaudeMessage[], start: Date, end: Date): UsageSummary {
     const dailyMap = new Map<string, {
       total: number; input: number; output: number; cacheRead: number; cacheWrite: number;
-      models: Map<string, TokenTotals>
+      models: Map<string, TokenTotals>;
+      hourly: { hour: number; total: number; input: number; output: number }[]
     }>()
     const startMs = start.getTime()
     const endMs = end.getTime()
@@ -164,7 +165,8 @@ export class ClaudeProvider implements IProvider {
 
       if (ts < startMs || ts > endMs) continue
 
-      const dateKey = formatDate(new Date(ts))
+      const date = new Date(ts)
+      const dateKey = formatDate(date)
       const meta = msg.message?.metadata || {}
       const usage = msg.message?.usage || {}
       const tok = msg.tokens
@@ -178,7 +180,7 @@ export class ClaudeProvider implements IProvider {
       if (totalTokens <= 0) continue
 
       if (!dailyMap.has(dateKey)) {
-        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, models: new Map() })
+        dailyMap.set(dateKey, { total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, models: new Map(), hourly: [] })
       }
 
       const day = dailyMap.get(dateKey)!
@@ -187,6 +189,16 @@ export class ClaudeProvider implements IProvider {
       day.output += outputTokens
       day.cacheRead += cacheRead
       day.cacheWrite += cacheWrite
+
+      const hour = date.getHours()
+      let hourEntry = day.hourly.find(h => h.hour === hour)
+      if (!hourEntry) {
+        hourEntry = { hour, total: 0, input: 0, output: 0 }
+        day.hourly.push(hourEntry)
+      }
+      hourEntry.total += totalTokens
+      hourEntry.input += inputTokens
+      hourEntry.output += outputTokens
 
       const modelName = msg.model || msg.message?.model || 'claude'
       if (!day.models.has(modelName)) {
@@ -223,6 +235,7 @@ export class ClaudeProvider implements IProvider {
         cache: { input: day.cacheRead, output: day.cacheWrite },
         total: day.total,
         breakdown,
+        hourly: day.hourly || [],
       })
     }
 

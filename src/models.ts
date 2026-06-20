@@ -15,6 +15,13 @@ export interface ModelUsage {
   tokens: TokenTotals
 }
 
+export interface HourlyUsage {
+  hour: number
+  total: number
+  input: number
+  output: number
+}
+
 export interface DailyUsage {
   date: string
   input: number
@@ -23,6 +30,7 @@ export interface DailyUsage {
   total: number
   breakdown: ModelUsage[]
   displayValue?: number
+  hourly?: HourlyUsage[]
 }
 
 export interface Streaks {
