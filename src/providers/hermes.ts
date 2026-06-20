@@ -4,7 +4,7 @@ import * as os from 'os'
 import * as vscode from 'vscode'
 import { IProvider } from './types'
 import { UsageSummary, ProviderId } from '../models'
-import { findHermesDir, tryMtime } from '../platform/paths'
+import { findHermesDir } from '../platform/paths'
 import { findPython, showPythonNotice } from '../platform/python'
 import { aggregateEntries, NormalizedEntry } from './aggregator'
 
@@ -66,17 +66,12 @@ export class HermesProvider implements IProvider {
     const pythonCmd = findPython()
     if (!pythonCmd) {
       showPythonNotice()
-      console.error('Hermes Python script not available, trying sql.js fallback')
-      return []
+      console.error('Hermes Python not available, trying sql.js fallback')
+      return await this.loadViaSqlJsFallback(dbPath, startMs, endMs)
     }
 
     try {
-      const { execSync } = require('child_process')
-      const fs = require('fs')
-      const os = require('os')
-      const path = require('path')
-
-      const tmpScript = path.join(os.tmpdir(), `slopmeter_hermes.py`)
+      const { runPythonScript } = await import('../platform/python')
       const pyCode = `
 import sqlite3, json, sys, os, shutil, tempfile
 db, s, e = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
@@ -113,25 +108,62 @@ c.close()
 shutil.rmtree(d, ignore_errors=True)
 json.dump(M, sys.stdout)
 `
-      fs.writeFileSync(tmpScript, pyCode)
-      try {
-        const result = execSync(
-          `${pythonCmd} "${tmpScript}" "${dbPath}" ${startMs} ${endMs}`,
-          { encoding: 'utf-8', timeout: 30000, maxBuffer: 100 * 1024 * 1024 }
-        )
-        const rows = JSON.parse(result)
-        const sessions: HermesSession[] = []
-        for (const row of rows) {
-          if (row && typeof row === 'object') {
-            sessions.push(row as HermesSession)
-          }
+      const result = await runPythonScript(
+        pythonCmd,
+        pyCode,
+        [dbPath, String(startMs), String(endMs)],
+        30000
+      )
+      const rows = JSON.parse(result)
+      const sessions: HermesSession[] = []
+      for (const row of rows) {
+        if (row && typeof row === 'object') {
+          sessions.push(row as HermesSession)
         }
-        return sessions
-      } finally {
-        try { fs.unlinkSync(tmpScript) } catch {}
       }
+      return sessions
     } catch (e) {
-      console.error('Hermes Python script failed:', e)
+      console.error('Hermes Python script failed, trying sql.js fallback:', e)
+      return await this.loadViaSqlJsFallback(dbPath, startMs, endMs)
+    }
+  }
+
+  private async loadViaSqlJsFallback(dbPath: string, startMs: number, endMs: number): Promise<HermesSession[]> {
+    try {
+      const initSqlJs = require('sql.js')
+      const buffer = fs.readFileSync(dbPath)
+      const SQL = await initSqlJs()
+      const db = new SQL.Database(buffer)
+
+      const stmt = db.prepare(`
+        SELECT id, model, started_at, input_tokens, output_tokens,
+               cache_read_tokens, cache_write_tokens, reasoning_tokens,
+               message_count
+        FROM sessions
+        WHERE started_at * 1000 >= ? AND started_at * 1000 <= ?
+      `)
+      stmt.bind([startMs, endMs])
+
+      const sessions: HermesSession[] = []
+      while (stmt.step()) {
+        const row = stmt.get()
+        sessions.push({
+          id: row[0] || '',
+          model: row[1] || '',
+          started_at: row[2] || 0,
+          input_tokens: row[3] || 0,
+          output_tokens: row[4] || 0,
+          cache_read_tokens: row[5] || 0,
+          cache_write_tokens: row[6] || 0,
+          reasoning_tokens: row[7] || 0,
+          message_count: row[8] || 0,
+        })
+      }
+      stmt.free()
+      db.close()
+      return sessions
+    } catch (e) {
+      console.error('Hermes sql.js fallback failed:', e)
       return []
     }
   }
@@ -147,7 +179,7 @@ json.dump(M, sys.stdout)
       const tsMs = session.started_at * 1000
       if (tsMs < startMs || tsMs > endMs) continue
 
-      const inputTokens = session.input_tokens + session.cache_read_tokens + session.cache_write_tokens
+      const inputTokens = session.input_tokens
       const outputTokens = session.output_tokens + session.reasoning_tokens
       if (inputTokens + outputTokens <= 0) continue
 
