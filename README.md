@@ -6,6 +6,10 @@
 
 ![SlopMeter 热力图](assets/screenshot.jpg)
 
+### 时段热力图
+
+![SlopMeter 时段热力图](assets/screenshot-hourly.jpg)
+
 ## 功能特性
 
 - 📊 按月日历热力图展示 AI 工具使用情况
