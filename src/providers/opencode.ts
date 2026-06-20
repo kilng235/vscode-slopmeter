@@ -171,10 +171,8 @@ json.dump(M, sys.stdout)
     const SQL = await initSqlJs()
     const db = new SQL.Database(buffer)
 
-    const startSec = Math.floor(startMs / 1000)
-    const endSec = Math.floor(endMs / 1000)
     const stmt = db.prepare("SELECT id, data FROM message WHERE time_created >= ? AND time_created <= ? ORDER BY time_created ASC")
-    stmt.bind([startSec, endSec])
+    stmt.bind([startMs, endMs])
 
     const messages: OpenCodeMessage[] = []
     while (stmt.step()) {
