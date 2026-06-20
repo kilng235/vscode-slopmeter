@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- 所有 Provider 改用异步 Python 执行（`runPythonScript`），不再阻塞主线程
+- OpenCode / Hermes 新增 sql.js 降级回退（Python 不可用时自动切换）
+- 修复 Token 重复计算：`inputTokens` 不再包含 cache read/write，避免输入与缓存统计重叠
+- 修复定时器内存泄漏：`deactivate` 时正确清理 `setInterval`
+- 移除未实现的 Export 命令
+- 清理未使用的 Provider 类型（codex / cursor / gemini / pi / amp 拆分为 `PlannedProviderId`）
+- 新增 vitest 单元测试（utils + aggregator）
+
 ## 0.2.0
 
 - 跨平台支持（Linux、macOS、Windows）
