@@ -146,7 +146,9 @@ export class ClaudeProvider implements IProvider {
       const usage = msg.message?.usage || {}
       const tok = msg.tokens
 
-      const inputTokens = tok?.input || usage.input_tokens || meta.input_tokens || 0
+      const inputTokens = (tok?.input || usage.input_tokens || meta.input_tokens || 0)
+        + (tok?.cache_read || usage.cache_read_input_tokens || meta.cache_read_input_tokens || 0)
+        + (tok?.cache_write || usage.cache_creation_input_tokens || meta.cache_creation_input_tokens || 0)
       const outputTokens = tok?.output || usage.output_tokens || meta.output_tokens || 0
       const cacheRead = tok?.cache_read || usage.cache_read_input_tokens || meta.cache_read_input_tokens || 0
       const cacheWrite = tok?.cache_write || usage.cache_creation_input_tokens || meta.cache_creation_input_tokens || 0
