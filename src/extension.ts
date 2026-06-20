@@ -3,6 +3,7 @@ import { SlopMeterPanel } from './webview/panel'
 import { refreshRegistry, setExtensionUri } from './providers'
 
 let panel: SlopMeterPanel | undefined
+let refreshTimer: NodeJS.Timeout | undefined
 
 export function activate(context: vscode.ExtensionContext) {
   setExtensionUri(context.extensionUri.fsPath)
@@ -15,16 +16,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('slopMeter.refresh', () => {
       panel?.refresh()
-    })
-  )
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('slopMeter.export', async () => {
-      const format = await vscode.window.showQuickPick(['PNG', 'SVG', 'JSON', 'HTML'], {
-        placeHolder: 'Select export format',
-      })
-      if (!format) return
-      vscode.window.showInformationMessage(`Export to ${format} coming soon!`)
     })
   )
 
@@ -51,10 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration('slopMeter')
   const interval = config.get<number>('refreshInterval', 0)
   if (interval > 0) {
-    setInterval(() => panel?.refresh(), interval * 1000)
+    refreshTimer = setInterval(() => panel?.refresh(), interval * 1000)
   }
 }
 
 export function deactivate() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = undefined
+  }
   panel = undefined
 }
