@@ -4,7 +4,7 @@ import * as os from 'os'
 import * as vscode from 'vscode'
 import { IProvider } from './types'
 import { UsageSummary, ProviderId } from '../models'
-import { findOpenCodeDir, tryMtime } from '../platform/paths'
+import { findOpenCodeDir } from '../platform/paths'
 import { findPython, showPythonNotice } from '../platform/python'
 import { aggregateEntries, NormalizedEntry } from './aggregator'
 import { walkDir } from '../utils'
@@ -90,7 +90,7 @@ export class OpenCodeProvider implements IProvider {
       const tokens = msg.tokens
       if (!tokens) continue
 
-      const inputTokens = (tokens.input || 0) + (tokens.cache?.read || 0) + (tokens.cache?.write || 0)
+      const inputTokens = tokens.input || 0
       const outputTokens = tokens.output || 0
       if (inputTokens + outputTokens <= 0) continue
 

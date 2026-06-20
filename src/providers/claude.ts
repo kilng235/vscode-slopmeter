@@ -3,7 +3,7 @@ import * as path from 'path'
 import * as os from 'os'
 import { IProvider } from './types'
 import { UsageSummary, ProviderId } from '../models'
-import { findClaudeDir, tryMtime } from '../platform/paths'
+import { findClaudeDir } from '../platform/paths'
 import { aggregateEntries, NormalizedEntry } from './aggregator'
 import { walkDir } from '../utils'
 
@@ -155,7 +155,7 @@ export class ClaudeProvider implements IProvider {
 
       entries.push({
         timestamp: ts,
-        inputTokens: inputTokens + cacheRead + cacheWrite,
+        inputTokens,
         outputTokens,
         cacheRead,
         cacheWrite,
