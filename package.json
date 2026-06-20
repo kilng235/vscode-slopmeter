@@ -2,7 +2,7 @@
   "name": "vscode-slopmeter",
   "displayName": "SlopMeter - AI Usage Heatmap",
   "description": "Track your AI coding tool usage with beautiful heatmaps in VSCode sidebar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "kilng235",
   "engines": {
     "vscode": "^1.85.0"
