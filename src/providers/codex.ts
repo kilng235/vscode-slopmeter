@@ -14,6 +14,7 @@ interface CodexThread {
   model_provider: string
   title: string
   tokens_used: number
+  rollout_path: string
 }
 
 export class CodexProvider implements IProvider {
@@ -79,7 +80,7 @@ for x in ['-wal', '-shm']:
     if os.path.exists(p): shutil.copy2(p, t + x)
 c = sqlite3.connect('file:' + t + '?mode=ro', uri=True)
 r = c.execute(
-    """SELECT id, created_at, model_provider, title, tokens_used
+    """SELECT id, created_at, model_provider, title, tokens_used, rollout_path
        FROM threads
        WHERE created_at * 1000 >= ? AND created_at * 1000 <= ?
          AND tokens_used > 0""",
@@ -91,7 +92,8 @@ for row in r:
         'created_at': row[1],
         'model_provider': row[2] or 'custom',
         'title': row[3] or '',
-        'tokens_used': row[4] or 0
+        'tokens_used': row[4] or 0,
+        'rollout_path': row[5] or ''
     })
 c.close()
 shutil.rmtree(d, ignore_errors=True)
@@ -125,16 +127,46 @@ json.dump(M, sys.stdout)
 
       if (thread.tokens_used <= 0) continue
 
+      const modelName = this.extractModelFromRollout(thread.rollout_path)
+
       entries.push({
         timestamp: tsMs,
         inputTokens: thread.tokens_used,
         outputTokens: 0,
         cacheRead: 0,
         cacheWrite: 0,
-        modelName: 'codex',
+        modelName: modelName,
       })
     }
 
     return entries
+  }
+
+  private extractModelFromRollout(rolloutPath: string): string {
+    if (!rolloutPath) return 'codex'
+
+    try {
+      const fullPath = path.resolve(rolloutPath)
+      if (!fs.existsSync(fullPath)) return 'codex'
+
+      const firstLine = fs.readFileSync(fullPath, 'utf-8').split('\n')[0]
+      if (!firstLine) return 'codex'
+
+      const data = JSON.parse(firstLine)
+      // Check session_meta or first event for model info
+      if (data.payload?.model) return data.payload.model
+      if (data.payload?.model_provider) return data.payload.model_provider
+
+      // Read a few more lines to find model
+      const lines = fs.readFileSync(fullPath, 'utf-8').split('\n')
+      for (let i = 1; i < Math.min(lines.length, 10); i++) {
+        try {
+          const line = JSON.parse(lines[i])
+          if (line.payload?.model) return line.payload.model
+        } catch {}
+      }
+    } catch {}
+
+    return 'codex'
   }
 }
