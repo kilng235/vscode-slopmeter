@@ -51,8 +51,8 @@ export interface UsageSummary {
   totalTokens: number
 }
 
-export type ProviderId = 'opencode' | 'claude' | 'hermes' | 'all'
-export type PlannedProviderId = 'codex' | 'cursor' | 'gemini' | 'pi' | 'amp'
+export type ProviderId = 'opencode' | 'claude' | 'hermes' | 'codex' | 'all'
+export type PlannedProviderId = 'cursor' | 'gemini' | 'pi' | 'amp'
 
 export type ColorMode = 'light' | 'dark'
 
@@ -87,8 +87,8 @@ export const PROVIDER_META: Record<ProviderId | PlannedProviderId, { name: strin
   codex: {
     name: 'Codex',
     colors: {
-      light: ['#e0e7ff', '#a5b4fc', '#818cf8', '#4f46e5', '#312e81'],
-      dark: ['#1e1b4b', '#312e81', '#4338ca', '#818cf8', '#c7d2fe'],
+      light: ['#FFF8E1', '#FFE082', '#FFD54F', '#FFB300', '#FF8F00'],
+      dark: ['#FF8F00', '#FFA000', '#FFB300', '#FFD54F', '#FFE082'],
     },
   },
   cursor: {

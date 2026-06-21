@@ -2,6 +2,7 @@ import { IProvider, createProviderRegistry, ProviderRegistry } from './types'
 import { OpenCodeProvider } from './opencode'
 import { ClaudeProvider } from './claude'
 import { HermesProvider } from './hermes'
+import { CodexProvider } from './codex'
 import { ProviderId } from '../models'
 
 let registry: ProviderRegistry | null = null
@@ -17,6 +18,7 @@ export function getProviderRegistry(): ProviderRegistry {
     registry.register(new OpenCodeProvider(undefined, extensionUri))
     registry.register(new ClaudeProvider(undefined, extensionUri))
     registry.register(new HermesProvider(undefined, extensionUri))
+    registry.register(new CodexProvider(undefined, extensionUri))
   }
   return registry
 }
@@ -26,6 +28,7 @@ export function refreshRegistry(customPaths: Record<string, string> = {}): void 
   registry.register(new OpenCodeProvider(customPaths.opencode, extensionUri))
   registry.register(new ClaudeProvider(customPaths.claude, extensionUri))
   registry.register(new HermesProvider(customPaths.hermes, extensionUri))
+  registry.register(new CodexProvider(customPaths.codex, extensionUri))
 }
 
 export function getProvider(id: ProviderId): IProvider | undefined {

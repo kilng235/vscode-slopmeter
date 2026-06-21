@@ -68,6 +68,10 @@ export class SlopMeterPanel implements vscode.WebviewViewProvider {
         const dir = config.get<string>('claudePath') || path.join(home, '.claude')
         return this.maxMtime(path.join(dir, 'history.jsonl'))
       }
+      if (providerId === 'codex') {
+        const dir = config.get<string>('codexPath') || path.join(home, '.codex')
+        return this.maxMtime(path.join(dir, 'state_5.sqlite'))
+      }
     } catch {
       // ignore
     }

@@ -68,6 +68,37 @@ export function findHermesDir(customPath?: string): string | null {
   return firstExisting(...getHermesCandidates())
 }
 
+export function getCodexCandidates(): string[] {
+  const home = os.homedir()
+  const paths: string[] = []
+
+  if (process.env.CODEX_DATA_DIR) {
+    paths.push(process.env.CODEX_DATA_DIR)
+  }
+
+  if (PLATFORM === 'win32') {
+    paths.push(path.join(home, '.codex'))
+  } else if (PLATFORM === 'darwin') {
+    paths.push(path.join(home, 'Library', 'Application Support', 'codex'))
+    paths.push(path.join(home, '.codex'))
+  } else {
+    // WSL environment: try Windows path via /mnt/c
+    const windowsHome = '/mnt/c/Users/Administrator/.codex'
+    if (fs.existsSync(windowsHome)) {
+      paths.push(windowsHome)
+    }
+    // Also try normal Linux path
+    paths.push(path.join(home, '.codex'))
+  }
+
+  return paths
+}
+
+export function findCodexDir(customPath?: string): string | null {
+  if (customPath) return fs.existsSync(customPath) ? customPath : null
+  return firstExisting(...getCodexCandidates())
+}
+
 export function tryMtime(filePath: string): number {
   try {
     if (!fs.existsSync(filePath)) return 0

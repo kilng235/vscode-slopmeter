@@ -54,7 +54,8 @@
           "default": [
             "opencode",
             "claude",
-            "hermes"
+            "hermes",
+            "codex"
           ],
           "description": "Providers to display in the heatmap"
         },
@@ -82,6 +83,11 @@
           "type": "string",
           "default": "",
           "description": "Custom Hermes Agent data directory path (auto-detected if empty)"
+        },
+        "slopMeter.codexPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom Codex data directory path (auto-detected if empty)"
         },
         "slopMeter.refreshInterval": {
           "type": "number",

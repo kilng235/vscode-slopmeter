@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
           opencode: config.get<string>('openCodePath', ''),
           claude: config.get<string>('claudePath', ''),
           hermes: config.get<string>('hermesPath', ''),
+          codex: config.get<string>('codexPath', ''),
         })
         panel?.refresh()
       }
